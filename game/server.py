@@ -2,8 +2,7 @@ import sys
 import socket
 import threading
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QTextEdit,
-    QLineEdit, QPushButton, QLabel, QListWidget, QHBoxLayout
+    QApplication, QWidget, QVBoxLayout, QTextEdit, QLineEdit, QPushButton, QLabel, QListWidget, QHBoxLayout
 )
 from PyQt6.QtCore import QTimer, Qt
 
@@ -19,7 +18,7 @@ class ServerApp(QWidget):
         self.server_socket = None
 
     def init_ui(self):
-        """Setup the server UI with a sleek dark theme."""
+        """Setup the server UI."""
         self.setWindowTitle("Chat Server")
         self.setGeometry(100, 100, 600, 500)
         self.setStyleSheet("""
@@ -121,6 +120,15 @@ class ServerApp(QWidget):
                     self.broadcast(f"{username} joined {chatroom}.", chatroom, client_socket)
                 elif message.startswith("/list"):
                     client_socket.send(f"Available chatrooms: {', '.join(chatrooms.keys())}".encode('utf-8'))
+                elif message.startswith("/dm"):
+                    parts = message.split(" ")
+                    if len(parts) >= 3:
+                        target_user = parts[1]
+                        dm_message = " ".join(parts[2:])
+                        for client, uname in usernames.items():
+                            if uname == target_user:
+                                client.send(f"[DM from {username}]: {dm_message}".encode('utf-8'))
+                                break
                 else:
                     self.broadcast(f"{username}: {message}", chatroom, client_socket)
                     self.log_message(f"{username}: {message}")
