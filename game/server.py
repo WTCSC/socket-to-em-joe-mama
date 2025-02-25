@@ -1,84 +1,208 @@
+import sys
 import socket
 import threading
-import json
+from PyQt6.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QTextEdit,
+    QLineEdit, QPushButton, QLabel, QListWidget, QHBoxLayout
+)
+from PyQt6.QtCore import QTimer, Qt
 
-HOST = "0.0.0.0"  # Listen on all interfaces
-MAX_PLAYERS = 8
+clients = []
+usernames = {}
+chatrooms = {"General": []}
 
-class RussianRouletteServer:
-    def __init__(self, port):
-        self.port = port
-        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server.bind((HOST, port))
-        self.server.listen(MAX_PLAYERS)
-        self.clients = []
-        self.usernames = []
-        self.game_started = False
-        self.current_turn = 0
+class ServerApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+        self.server_running = False
+        self.server_socket = None
 
-    def broadcast(self, message):
-        """Send a message to all connected clients."""
-        for client in self.clients:
-            try:
-                client.sendall(json.dumps(message).encode())
-            except:
-                pass
+    def init_ui(self):
+        """Setup the server UI with a sleek dark theme."""
+        self.setWindowTitle("Chat Server")
+        self.setGeometry(100, 100, 600, 500)
+        self.setStyleSheet("""
+            QWidget { background-color: #2C2F33; color: #FFFFFF; }
+            QTextEdit, QListWidget { background-color: #23272A; border: none; }
+            QLineEdit { background-color: #40444B; border: 1px solid #7289DA; padding: 5px; }
+            QPushButton { background-color: #7289DA; color: #FFFFFF; border-radius: 5px; padding: 8px; }
+            QPushButton:hover { background-color: #5B6EAE; }
+        """)
 
-    def handle_client(self, client):
-        """Handles individual client communication."""
+        main_layout = QHBoxLayout()
+        sidebar_layout = QVBoxLayout()
+        chat_layout = QVBoxLayout()
+
+        self.status_label = QLabel("Server Stopped")
+        sidebar_layout.addWidget(self.status_label)
+
+        self.user_list = QListWidget()
+        sidebar_layout.addWidget(self.user_list)
+
+        self.chat_display = QTextEdit()
+        self.chat_display.setReadOnly(True)
+        chat_layout.addWidget(self.chat_display)
+
+        self.message_input = QLineEdit()
+        chat_layout.addWidget(self.message_input)
+
+        self.send_button = QPushButton("Send")
+        self.send_button.clicked.connect(self.send_message)
+        chat_layout.addWidget(self.send_button)
+
+        self.ip_input = QLineEdit()
+        self.ip_input.setPlaceholderText("Enter IP (default: 0.0.0.0)")
+        chat_layout.addWidget(self.ip_input)
+
+        self.port_input = QLineEdit()
+        self.port_input.setPlaceholderText("Enter Port (default: 5555)")
+        chat_layout.addWidget(self.port_input)
+
+        self.start_button = QPushButton("Start Server")
+        self.start_button.clicked.connect(self.start_server)
+        chat_layout.addWidget(self.start_button)
+
+        self.stop_button = QPushButton("Stop Server")
+        self.stop_button.clicked.connect(self.stop_server)
+        self.stop_button.setEnabled(False)
+        chat_layout.addWidget(self.stop_button)
+
+        main_layout.addLayout(sidebar_layout, 1)
+        main_layout.addLayout(chat_layout, 3)
+        self.setLayout(main_layout)
+
+    def log_message(self, message):
+        """Safely update the chat log from any thread."""
+        QTimer.singleShot(0, lambda: self.chat_display.append(message))
+        print(message)
+
+    def broadcast(self, message, chatroom, sender_socket=None):
+        """Send a message to all clients in a chatroom except the sender."""
+        print(f"Broadcasting: {message}")
+        disconnected_clients = []
+        
+        for client in chatrooms[chatroom]:
+            if client != sender_socket:
+                try:
+                    client.send(message.encode('utf-8'))
+                except:
+                    client.close()
+                    disconnected_clients.append(client)
+
+        for client in disconnected_clients:
+            chatrooms[chatroom].remove(client)
+            clients.remove(client)
+
+    def handle_client(self, client_socket):
+        """Handle messages from a client."""
         try:
-            username = client.recv(1024).decode()
-            self.usernames.append(username)
-            self.broadcast({"type": "update_players", "players": self.usernames})
+            username = client_socket.recv(1024).decode('utf-8')
+            usernames[client_socket] = username
+            self.user_list.addItem(username)
+            self.log_message(f"{username} joined the chat.")
 
-            while True:
-                data = client.recv(1024).decode()
-                if not data:
+            chatroom = "General"
+            chatrooms[chatroom].append(client_socket)
+            self.broadcast(f"{username} joined {chatroom}.", chatroom, client_socket)
+
+            while self.server_running:
+                message = client_socket.recv(1024).decode('utf-8')
+                if not message:
                     break
-                message = json.loads(data)
 
-                if message["type"] == "fire":
-                    self.handle_fire()
-
+                if message.startswith("/join"):
+                    new_chatroom = message.split(" ")[1]
+                    if new_chatroom not in chatrooms:
+                        chatrooms[new_chatroom] = []
+                    chatrooms[chatroom].remove(client_socket)
+                    chatroom = new_chatroom
+                    chatrooms[chatroom].append(client_socket)
+                    self.broadcast(f"{username} joined {chatroom}.", chatroom, client_socket)
+                elif message.startswith("/list"):
+                    client_socket.send(f"Available chatrooms: {', '.join(chatrooms.keys())}".encode('utf-8'))
+                else:
+                    self.broadcast(f"{username}: {message}", chatroom, client_socket)
+                    self.log_message(f"{username}: {message}")
         except:
             pass
         finally:
-            index = self.clients.index(client)
-            self.clients.remove(client)
+            client_socket.close()
+            clients.remove(client_socket)
+            chatrooms[chatroom].remove(client_socket)
+            self.user_list.takeItem(self.user_list.row(self.user_list.findItems(username, Qt.MatchExactly)[0]))
+            self.log_message(f"{username} left the chat.")
+
+    def start_server(self):
+        """Start the chat server."""
+        if self.server_running:
+            return
+
+        host = self.ip_input.text().strip() or "0.0.0.0"
+        port = self.port_input.text().strip() or "5555"
+        
+        try:
+            port = int(port)
+        except ValueError:
+            self.log_message("Invalid port number.")
+            return
+
+        self.server_running = True
+        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.server_socket.bind((host, port))
+        except Exception as e:
+            self.log_message(f"Failed to bind server: {e}")
+            self.server_running = False
+            return
+
+        self.server_socket.listen(5)
+
+        self.log_message(f"Server started on {host}:{port}")
+        self.status_label.setText(f"Server Running on {host}:{port}")
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+        threading.Thread(target=self.accept_clients, daemon=True).start()
+
+    def accept_clients(self):
+        """Accept new clients and start a new thread for each."""
+        while self.server_running:
+            try:
+                client_socket, _ = self.server_socket.accept()
+                clients.append(client_socket)
+                threading.Thread(target=self.handle_client, args=(client_socket,), daemon=True).start()
+            except:
+                break
+
+    def send_message(self):
+        """Send a message from the server."""
+        message = self.message_input.text().strip()
+        if message:
+            for chatroom in chatrooms:
+                self.broadcast(f"Server: {message}", chatroom)
+            self.log_message(f"Server: {message}")
+            self.message_input.clear()
+
+    def stop_server(self):
+        """Stop the server and disconnect all clients."""
+        self.server_running = False
+        for client in clients:
             client.close()
-            self.usernames.pop(index)
-            self.broadcast({"type": "update_players", "players": self.usernames})
+        if self.server_socket:
+            self.server_socket.close()
 
-    def handle_fire(self):
-        """Handles a player's trigger pull."""
-        import random
-        bullet_fires = random.choice([False, False, False, False, False, True])  # 1/6 chance
-        result = {"type": "shot_fired", "player": self.usernames[self.current_turn], "bullet_fires": bullet_fires}
+        self.log_message("Server stopped.")
+        self.status_label.setText("Server Stopped")
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
 
-        if bullet_fires:
-            self.usernames.pop(self.current_turn)
-            self.clients.pop(self.current_turn)
-            if len(self.usernames) == 1:
-                result["winner"] = self.usernames[0]  # Declare winner
-                self.broadcast(result)
-                return
-
-        self.current_turn = (self.current_turn + 1) % len(self.usernames)
-        self.broadcast(result)
-
-    def start(self):
-        print(f"Server started on port {self.port}")
-        while not self.game_started:
-            client, _ = self.server.accept()
-            if len(self.clients) >= MAX_PLAYERS:
-                client.sendall(json.dumps({"type": "full"}).encode())
-                client.close()
-                continue
-
-            self.clients.append(client)
-            threading.Thread(target=self.handle_client, args=(client,)).start()
+def run_server():
+    """Launch the chat server UI."""
+    app = QApplication(sys.argv)
+    server = ServerApp()
+    server.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    port = int(input("Enter port: "))
-    server = RussianRouletteServer(port)
-    server.start()
+    run_server()
