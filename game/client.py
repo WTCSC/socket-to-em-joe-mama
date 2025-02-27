@@ -7,12 +7,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QFont
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 
-# Color scheme
-BACKGROUND_COLOR = "#2E3440"
-TEXT_COLOR = "#ECEFF4"
-INPUT_COLOR = "#4C566A"
-BUTTON_COLOR = "#5E81AC"
-BUTTON_HOVER_COLOR = "#81A1C1"
+# Sleek modern color scheme
+BACKGROUND_COLOR = "#1E1E2E"
+TEXT_COLOR = "#CDD6F4"
+INPUT_COLOR = "#313244"
+BUTTON_COLOR = "#89B4FA"
+BUTTON_HOVER_COLOR = "#74C7EC"
+SCROLLBAR_COLOR = "#585B70"
 
 class LoginWindow(QWidget):
     """Login window for username, IP, and port input."""
@@ -25,21 +26,19 @@ class LoginWindow(QWidget):
         self.setWindowTitle("Login")
         self.setGeometry(100, 100, 400, 250)
         self.setStyleSheet(f"""
-            QWidget {{ background-color: {BACKGROUND_COLOR}; color: {TEXT_COLOR}; }}
-            QLineEdit {{ background-color: {INPUT_COLOR}; border: 1px solid {BUTTON_COLOR}; border-radius: 5px; padding: 8px; color: {TEXT_COLOR}; }}
-            QPushButton {{ background-color: {BUTTON_COLOR}; color: {TEXT_COLOR}; border-radius: 5px; padding: 8px; font-weight: bold; }}
+            QWidget {{ background-color: {BACKGROUND_COLOR}; color: {TEXT_COLOR}; font-family: 'Inter', sans-serif; }}
+            QLineEdit {{ background-color: {INPUT_COLOR}; border: 2px solid {BUTTON_COLOR}; border-radius: 8px; padding: 10px; color: {TEXT_COLOR}; font-size: 14px; }}
+            QPushButton {{ background-color: {BUTTON_COLOR}; color: {TEXT_COLOR}; border-radius: 8px; padding: 10px; font-weight: bold; font-size: 14px; }}
             QPushButton:hover {{ background-color: {BUTTON_HOVER_COLOR}; }}
         """)
 
         layout = QVBoxLayout()
         
-        # Title
         title = QLabel("Chat App Login")
         title.setFont(QFont("Arial", 14, QFont.Weight.Bold))
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
 
-        # Input fields
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText("Enter your username")
         layout.addWidget(self.username_input)
@@ -52,7 +51,6 @@ class LoginWindow(QWidget):
         self.port_input.setPlaceholderText("Enter server port (default: 5555)")
         layout.addWidget(self.port_input)
 
-        # Login button
         self.login_button = QPushButton("Login")
         self.login_button.clicked.connect(self.on_login)
         layout.addWidget(self.login_button)
@@ -97,20 +95,19 @@ class ChatWindow(QWidget):
         self.setGeometry(100, 100, 600, 400)
         self.setStyleSheet(f"""
             QWidget {{ background-color: {BACKGROUND_COLOR}; color: {TEXT_COLOR}; }}
-            QTextEdit {{ background-color: {INPUT_COLOR}; border: none; padding: 8px; color: {TEXT_COLOR}; font-size: 14px; }}
-            QLineEdit {{ background-color: {INPUT_COLOR}; border: 1px solid {BUTTON_COLOR}; border-radius: 5px; padding: 8px; color: {TEXT_COLOR}; }}
-            QPushButton {{ background-color: {BUTTON_COLOR}; color: {TEXT_COLOR}; border-radius: 5px; padding: 8px; font-weight: bold; }}
+            QTextEdit {{ background-color: {INPUT_COLOR}; border: none; padding: 10px; border-radius: 8px; color: {TEXT_COLOR}; font-size: 15px; }}
+            QLineEdit {{ background-color: {INPUT_COLOR}; border: 2px solid {BUTTON_COLOR}; border-radius: 8px; padding: 10px; color: {TEXT_COLOR}; font-size: 14px; }}
+            QPushButton {{ background-color: {BUTTON_COLOR}; color: {TEXT_COLOR}; border-radius: 8px; padding: 10px; font-weight: bold; font-size: 14px; }}
             QPushButton:hover {{ background-color: {BUTTON_HOVER_COLOR}; }}
+            QScrollBar:vertical {{ background: {SCROLLBAR_COLOR}; width: 10px; border-radius: 5px; }}
         """)
 
         layout = QVBoxLayout()
 
-        # Chat display
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         layout.addWidget(self.chat_display)
 
-        # Input area
         input_layout = QHBoxLayout()
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText("Type your message...")
@@ -131,7 +128,6 @@ class ChatWindow(QWidget):
             self.client_socket.connect((self.ip, self.port))
             self.client_socket.send(self.username.encode('utf-8'))
             
-            # Start the thread to receive messages
             self.receive_thread = ReceiveThread(self.client_socket)
             self.receive_thread.message_received.connect(self.update_chat_display)
             self.receive_thread.start()
@@ -141,17 +137,19 @@ class ChatWindow(QWidget):
             self.close()
 
     def send_message(self):
-        """Sends a message to the server."""
+        """Sends a message to the server and updates the UI."""
         message = self.message_input.text().strip()
         if message:
             try:
-                self.client_socket.send(message.encode('utf-8'))
+                formatted_message = f"{self.username}: {message}"
+                self.client_socket.send(formatted_message.encode('utf-8'))
+                self.update_chat_display(formatted_message)  # Update UI immediately
                 self.message_input.clear()
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to send message: {e}")
 
     def update_chat_display(self, message):
-        """Updates the chat display safely on the main thread."""
+        """Updates the chat display."""
         self.chat_display.append(message)
         self.chat_display.ensureCursorVisible()
 
@@ -164,15 +162,13 @@ class ReceiveThread(QThread):
         self.client_socket = client_socket
 
     def run(self):
-        """Receives messages from the server and emits them."""
+        """Receives messages from the server."""
         while True:
             try:
                 message = self.client_socket.recv(1024).decode('utf-8')
-                if not message:
-                    break
-                self.message_received.emit(message)
-            except Exception as e:
-                print(f"Error receiving message: {e}")
+                if message:
+                    self.message_received.emit(message)
+            except:
                 break
         self.client_socket.close()
 

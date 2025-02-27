@@ -16,42 +16,57 @@ class ServerApp(QWidget):
         self.init_ui()
         self.server_running = False
         self.server_socket = None
+        self.admin_username = "Server"
 
     def init_ui(self):
         """Setup the server UI."""
         self.setWindowTitle("Chat Server")
-        self.setGeometry(100, 100, 600, 500)
+        self.setGeometry(100, 100, 650, 500)
         self.setStyleSheet("""
-            QWidget { background-color: #2C2F33; color: #FFFFFF; }
-            QTextEdit, QListWidget { background-color: #23272A; border: none; }
-            QLineEdit { background-color: #40444B; border: 1px solid #7289DA; padding: 5px; }
-            QPushButton { background-color: #7289DA; color: #FFFFFF; border-radius: 5px; padding: 8px; }
+            QWidget { background-color: #2C2F33; color: #FFFFFF; font-family: Arial; }
+            QTextEdit, QListWidget { background-color: #23272A; border: none; padding: 8px; border-radius: 5px; }
+            QLineEdit { background-color: #40444B; border: 1px solid #7289DA; padding: 8px; border-radius: 5px; color: #FFFFFF; }
+            QPushButton { background-color: #7289DA; color: #FFFFFF; border-radius: 5px; padding: 8px; font-weight: bold; }
             QPushButton:hover { background-color: #5B6EAE; }
+            QLabel { font-size: 14px; font-weight: bold; }
         """)
 
         main_layout = QHBoxLayout()
         sidebar_layout = QVBoxLayout()
         chat_layout = QVBoxLayout()
 
+        # Sidebar (User List & Server Status)
         self.status_label = QLabel("Server Stopped")
+        self.status_label.setStyleSheet("font-size: 16px; color: #FF5555;")
         sidebar_layout.addWidget(self.status_label)
 
         self.user_list = QListWidget()
         sidebar_layout.addWidget(self.user_list)
 
+        # Chat log
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
         chat_layout.addWidget(self.chat_display)
 
+        # Admin username input
+        self.admin_username_input = QLineEdit()
+        self.admin_username_input.setPlaceholderText("Enter Admin Username (Default: Server)")
+        chat_layout.addWidget(self.admin_username_input)
+
+        # Message input
+        input_layout = QHBoxLayout()
         self.message_input = QLineEdit()
-        chat_layout.addWidget(self.message_input)
+        self.message_input.setPlaceholderText("Type a message...")
+        input_layout.addWidget(self.message_input)
 
         self.send_button = QPushButton("Send")
         self.send_button.clicked.connect(self.send_message)
-        chat_layout.addWidget(self.send_button)
+        input_layout.addWidget(self.send_button)
+        chat_layout.addLayout(input_layout)
 
+        # Server controls
         self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("Enter IP (default: 0.0.0.0)")
+        self.ip_input.setPlaceholderText("Enter IP (default: 127.0.0.1)")
         chat_layout.addWidget(self.ip_input)
 
         self.port_input = QLineEdit()
@@ -67,6 +82,7 @@ class ServerApp(QWidget):
         self.stop_button.setEnabled(False)
         chat_layout.addWidget(self.stop_button)
 
+        # Layout setup
         main_layout.addLayout(sidebar_layout, 1)
         main_layout.addLayout(chat_layout, 3)
         self.setLayout(main_layout)
@@ -146,7 +162,8 @@ class ServerApp(QWidget):
         if self.server_running:
             return
 
-        host = self.ip_input.text().strip() or "0.0.0.0"
+        self.admin_username = self.admin_username_input.text().strip() or "Server"
+        host = self.ip_input.text().strip() or "127.0.0.1"
         port = self.port_input.text().strip() or "5555"
         
         try:
@@ -184,12 +201,12 @@ class ServerApp(QWidget):
                 break
 
     def send_message(self):
-        """Send a message from the server."""
+        """Send a message from the server with the admin username."""
         message = self.message_input.text().strip()
         if message:
             for chatroom in chatrooms:
-                self.broadcast(f"Server: {message}", chatroom)
-            self.log_message(f"Server: {message}")
+                self.broadcast(f"{self.admin_username}: {message}", chatroom)
+            self.log_message(f"{self.admin_username}: {message}")
             self.message_input.clear()
 
     def stop_server(self):
