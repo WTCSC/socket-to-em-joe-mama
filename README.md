@@ -12,7 +12,7 @@ A python chat client built with **Python (PyQt6)** and **Sockets**, featuring a 
 
 ## 📦 Installation  
 
-### 1️⃣ Clone the Repository   bash git clone https://github.com/your-username/pyqt6-chat-client.git cd pyqt6-chat-client
+### 1️⃣ Clone the Repository   `bash git clone https://github.com/your-username/pyqt6-chat-client.git cd pyqt6-chat-client](https://github.com/WTCSC/socket-to-em-joe-mama`
 
 ### 2️⃣ Install Dependencies
 
